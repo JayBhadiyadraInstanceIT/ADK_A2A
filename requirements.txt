@@ -8,3 +8,6 @@ PyJWT
 jwcrypto
 uvicorn
 websockets==15.0.1
+streamlit 
+pyaudio 
+sseclient
