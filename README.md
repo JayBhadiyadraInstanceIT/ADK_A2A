@@ -22,40 +22,46 @@ Create a `.env` file in the root of the `a2a_friend_scheduling` directory with y
 GOOGLE_API_KEY="your_api_key_here" 
 ```
 
-## Run the Agents
+## Run All the Agents
 
+You can run all the remote agents from one terminal by executing Terminal 1 command and in second terminal the Host agent will run as below respected commands.
+
+### Terminal 1: Run All Remote Agent
+```bash
+python run_all_agents.py
+```
+
+### Terminal 2: Run Host Agent
+```bash
+cd host_app
+python main.py      
+```
+
+## Run the Agents (All agents Separately)
 You will need to run each agent in a separate terminal window. The first time you run these commands, `uv` will create a virtual environment and install all necessary dependencies before starting the agent.
 
 ### Terminal 1: Run Kaitlynn Agent
 ```bash
-cd kaitlynn_agent_langgraph
-uv venv
-source .venv/bin/activate
-uv run --active app/__main__.py
+cd kaitlynn_agent_adk
+python __main__.py
 ```
 
 ### Terminal 2: Run Nate Agent
 ```bash
-cd nate_agent_crewai
-uv venv
-source .venv/bin/activate
-uv run --active .
+cd nate_agent_adk
+python __main__.py
 ```
 
 ### Terminal 3: Run Karley Agent
 ```bash
 cd karley_agent_adk
-uv venv
-source .venv/bin/activate
-uv run --active .
+python __main__.py
 ```
 
 ### Terminal 4: Run Host Agent
 ```bash
-cd host_agent_adk
-uv venv
-source .venv/bin/activate
-uv run --active adk web      
+cd host_app
+python main.py      
 ```
 
 ## Interact with the Host Agent
