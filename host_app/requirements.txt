@@ -1,0 +1,8 @@
+google-adk==1.2.1
+a2a-sdk
+nest_asyncio
+python-dotenv
+asyncclick
+PyJWT
+jwcrypto
+uvicorn
