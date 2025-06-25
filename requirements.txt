@@ -1,4 +1,5 @@
-google-adk==1.2.1
+google-adk==1.4.2
+google-genai==1.21.1
 a2a-sdk
 nest_asyncio
 python-dotenv
@@ -6,3 +7,4 @@ asyncclick
 PyJWT
 jwcrypto
 uvicorn
+websockets==15.0.1
