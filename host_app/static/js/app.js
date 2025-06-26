@@ -87,6 +87,24 @@ function connectSSE() {
 
       // Scroll down to the bottom of the messagesDiv
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      // Stream each sentence as TTS
+      if (audioEnabled) {
+        fetch("/tts-stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: message_from_server.data })
+        })
+        .then(res => res.json())
+        .then(audio => {
+          if (audio.data) {
+            const audioBytes = base64ToArray(audio.data);
+            if (audioPlayerNode) {
+              audioPlayerNode.port.postMessage(audioBytes);
+            }
+          }
+        })
+        .catch(err => console.error("TTS stream error:", err));
+      }
     }
   };
 
@@ -232,10 +250,11 @@ function sendBufferedAudio() {
   }
   
   // Send the combined audio data
-  sendMessage({
-    mime_type: "audio/pcm",
-    data: arrayBufferToBase64(combinedBuffer.buffer),
-  });
+  // sendMessage({
+  //   mime_type: "audio/pcm",
+  //   data: arrayBufferToBase64(combinedBuffer.buffer),
+  // });
+  sendToSTT(new Blob([combinedBuffer], { type: "audio/wav" }));
   console.log("[CLIENT TO AGENT] sent %s bytes", combinedBuffer.byteLength);
   
   // Clear the buffer
@@ -265,3 +284,29 @@ function arrayBufferToBase64(buffer) {
   }
   return window.btoa(binary);
 }
+
+
+async function sendToSTT(blob) {
+  const formData = new FormData();
+  formData.append("file", blob, "audio.wav");
+
+  try {
+    const response = await fetch("/stt-stream", {
+      method: "POST",
+      body: formData,
+    });
+
+    const result = await response.json();
+    const text = result.text;
+    if (text) {
+      console.log("[STT -> TEXT] ", text);
+      sendMessage({
+        mime_type: "text/plain",
+        data: text
+      });
+    }
+  } catch (error) {
+    console.error("STT request failed:", error);
+  }
+}
+

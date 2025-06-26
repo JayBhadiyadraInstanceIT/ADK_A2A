@@ -703,10 +703,12 @@ from google.adk.runners import InMemoryRunner
 from google.adk.agents import LiveRequestQueue
 from google.adk.agents.run_config import RunConfig
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
+from stt_service import transcribe_audio
+from tts_service import text_to_pcm
 
 # Import the enhanced multimodal host agent
 from host_agent import root_agent
@@ -984,6 +986,31 @@ async def debug_sessions():
         "active_sessions": list(active_sessions.keys()),
         "session_count": len(active_sessions)
     }
+
+
+@app.post("/stt-stream")
+async def stt_stream(file: UploadFile = File(...)):
+    """Accepts a short PCM WAV file and returns transcribed text."""
+    try:
+        transcript = await transcribe_audio(file)
+        return {"text": transcript}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/tts-stream")
+async def tts_stream(request: Request):
+    """Accepts text and returns PCM audio (base64 encoded)"""
+    try:
+        payload = await request.json()
+        text = payload.get("text", "")
+        audio_bytes = text_to_pcm(text)
+        return {
+            "mime_type": "audio/pcm",
+            "data": base64.b64encode(audio_bytes).decode("utf-8")
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # Development server startup
