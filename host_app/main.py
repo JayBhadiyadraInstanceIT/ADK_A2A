@@ -708,8 +708,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-# Import the enhanced multimodal host agent
 from host_agent import root_agent
+from tts_processor import generate_audio_from_text
 
 warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
@@ -722,6 +722,7 @@ load_dotenv()
 
 APP_NAME = "Pickleball Scheduling Agent"
 
+audio_buffers = {}
 
 async def start_agent_session(user_id, is_audio=False):
     """Starts an enhanced agent session with pickleball scheduling capabilities"""
@@ -806,14 +807,39 @@ async def agent_to_client_sse(live_events):
                         continue
 
                 # If it's text and a partial text, send it
-                if part.text and event.partial:
+                # if part.text and event.partial:
+                #     message = {
+                #         "mime_type": "text/plain",
+                #         "data": part.text
+                #     }
+                #     yield f"data: {json.dumps(message)}\n\n"
+                #     print(f"[AGENT TO CLIENT]: text/plain: {message}")
+                                    # If it's text and (for partials or final responses), process accordingly.
+                if part.text:
+                    # When in audio mode, convert the text response using TTS.
+                    if is_audio:
+                        try:
+                            audio_data = generate_audio_from_text(part.text)
+                            if audio_data:
+                                message = {
+                                    "mime_type": "audio/pcm",
+                                    "data": base64.b64encode(audio_data).decode("ascii")
+                                }
+                                yield f"data: {json.dumps(message)}\n\n"
+                                print(f"[TTS Generated Audio]: {len(audio_data)} bytes.")
+                                continue  # Skip sending text since we have audio
+                        except NotImplementedError as e:
+                            print(f"TTS not implemented: {e}")
+                            # If TTS is not available, fall back to text.
+                    
+                    # Fallback: Send text as usual
                     message = {
                         "mime_type": "text/plain",
                         "data": part.text
                     }
                     yield f"data: {json.dumps(message)}\n\n"
                     print(f"[AGENT TO CLIENT]: text/plain: {message}")
-                    
+
             except Exception as e:
                 print(f"Error processing event: {e}")
                 traceback.print_exc()
@@ -923,10 +949,46 @@ async def sse_endpoint(user_id: int, is_audio: str = "false"):
         return {"error": f"Failed to start session: {str(e)}"}
 
 
+# @app.post("/send/{user_id}")
+# async def send_message_endpoint(user_id: int, request: Request):
+#     """Enhanced HTTP endpoint for client to multimodal agent communication"""
+
+#     user_id_str = str(user_id)
+
+#     try:
+#         # Get the live request queue for this user
+#         live_request_queue = active_sessions.get(user_id_str)
+#         if not live_request_queue:
+#             return {"error": "Session not found"}
+
+#         # Parse the message
+#         message = await request.json()
+#         mime_type = message["mime_type"]
+#         data = message["data"]
+
+#         # Send the message to the agent
+#         if mime_type == "text/plain":
+#             content = Content(role="user", parts=[Part.from_text(text=data)])
+#             live_request_queue.send_content(content=content)
+#             print(f"[CLIENT TO AGENT]: {data}")
+#         elif mime_type == "audio/pcm":
+#             decoded_data = base64.b64decode(data)
+#             live_request_queue.send_realtime(Blob(data=decoded_data, mime_type=mime_type))
+#             print(f"[CLIENT TO AGENT]: audio/pcm: {len(decoded_data)} bytes")
+#         else:
+#             return {"error": f"Mime type not supported: {mime_type}"}
+
+#         return {"status": "sent"}
+        
+#     except Exception as e:
+#         print(f"Error sending message: {e}")
+#         traceback.print_exc()
+#         return {"error": f"Failed to send message: {str(e)}"}
+
+
 @app.post("/send/{user_id}")
 async def send_message_endpoint(user_id: int, request: Request):
     """Enhanced HTTP endpoint for client to multimodal agent communication"""
-
     user_id_str = str(user_id)
 
     try:
@@ -935,20 +997,24 @@ async def send_message_endpoint(user_id: int, request: Request):
         if not live_request_queue:
             return {"error": "Session not found"}
 
-        # Parse the message
+        # Parse the incoming message
         message = await request.json()
         mime_type = message["mime_type"]
         data = message["data"]
 
-        # Send the message to the agent
         if mime_type == "text/plain":
             content = Content(role="user", parts=[Part.from_text(text=data)])
             live_request_queue.send_content(content=content)
             print(f"[CLIENT TO AGENT]: {data}")
         elif mime_type == "audio/pcm":
+            # Decode and buffer the audio data
             decoded_data = base64.b64decode(data)
-            live_request_queue.send_realtime(Blob(data=decoded_data, mime_type=mime_type))
-            print(f"[CLIENT TO AGENT]: audio/pcm: {len(decoded_data)} bytes")
+            if user_id_str not in audio_buffers:
+                audio_buffers[user_id_str] = bytearray()
+            audio_buffers[user_id_str].extend(decoded_data)
+            print(f"[CLIENT TO AGENT][STT Buffer]: Received and buffered {len(decoded_data)} bytes.")
+            # Note: We return buffering status and do NOT yet send to the agent.
+            return {"status": "buffering"}
         else:
             return {"error": f"Mime type not supported: {mime_type}"}
 
@@ -958,6 +1024,34 @@ async def send_message_endpoint(user_id: int, request: Request):
         print(f"Error sending message: {e}")
         traceback.print_exc()
         return {"error": f"Failed to send message: {str(e)}"}
+
+
+@app.post("/end_audio/{user_id}")
+async def end_audio_endpoint(user_id: int):
+    """Endpoint to trigger STT processing on buffered audio and send the transcript to the Host Agent."""
+    user_id_str = str(user_id)
+    if user_id_str not in audio_buffers or len(audio_buffers[user_id_str]) == 0:
+        return {"error": "No audio to process."}
+    
+    # Import the STT processor
+    from stt_processor import process_audio_to_text
+    
+    # Get and clear the buffered audio
+    pcm_data = bytes(audio_buffers[user_id_str])
+    audio_buffers[user_id_str] = bytearray()
+    
+    transcript = process_audio_to_text(pcm_data)
+    print(f"[STT Transcript]: {transcript}")
+    
+    # Now send the transcript as a text message to the host agent session
+    live_request_queue = active_sessions.get(user_id_str)
+    if not live_request_queue:
+        return {"error": "Session not found."}
+    
+    content = Content(role="user", parts=[Part.from_text(text=transcript)])
+    live_request_queue.send_content(content=content)
+    
+    return {"status": "sent", "transcript": transcript}
 
 
 @app.get("/agents/status")

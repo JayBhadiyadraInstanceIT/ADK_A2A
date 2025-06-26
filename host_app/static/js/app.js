@@ -265,3 +265,26 @@ function arrayBufferToBase64(buffer) {
   }
   return window.btoa(binary);
 }
+
+// Add event listener to Stop Audio button
+const stopAudioButton = document.getElementById("stopAudioButton");
+stopAudioButton.addEventListener("click", () => {
+  // Use the same sessionId as your user_id.
+  const endAudioUrl = "http://" + window.location.host + "/end_audio/" + sessionId;
+  fetch(endAudioUrl, {
+    method: 'POST',
+  })
+    .then(response => response.json())
+    .then(data => {
+      console.log("End Audio Response:", data);
+      // Optionally, display the transcript in the messages div
+      if (data.transcript) {
+        const transcriptP = document.createElement("p");
+        transcriptP.textContent = "> " + data.transcript;
+        messagesDiv.appendChild(transcriptP);
+      }
+    })
+    .catch(err => {
+      console.error("Error stopping audio:", err);
+    });
+});
