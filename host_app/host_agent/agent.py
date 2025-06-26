@@ -754,19 +754,92 @@ class HostAgent:
         - Handle errors gracefully and inform the user of any issues
         """
 
-    async def stream(self, query: str, session_id: str) -> AsyncIterable[dict[str, Any]]:
+    # async def stream(self, query: str, session_id: str) -> AsyncIterable[dict[str, Any]]:
+#     async def stream(self, query: Any, session_id: str) -> AsyncIterable[dict[str, Any]]:
+#         """
+#         Streams the agent's response to a given query.
+#         Enhanced to handle multimodal responses with better error handling.
+#         """
+#         try:
+#             session = await self._runner.session_service.get_session(
+#                 app_name=self._agent.name,
+#                 user_id=self._user_id,
+#                 session_id=session_id,
+#             )
+#             # content = types.Content(role="user", parts=[types.Part.from_text(text=query)])
+#             # user_text = await query if callable(query) else query
+#             if isinstance(query, dict) and "text" in query:
+#                 query = query["text"]
+#             elif asyncio.iscoroutine(query):
+#                 query = await query
+
+#             content = types.Content(
+#                 role="user",
+#                 parts=[types.Part.from_text(text=query)]
+# )
+            
+#             if session is None:
+#                 session = await self._runner.session_service.create_session(
+#                     app_name=self._agent.name,
+#                     user_id=self._user_id,
+#                     state={},
+#                     session_id=session_id,
+#                 )
+            
+#             async for event in self._runner.run_async(
+#                 user_id=self._user_id, session_id=session.id, new_message=content
+#             ):
+#                 try:
+#                     if event.is_final_response():
+#                         response = ""
+#                         if (
+#                             event.content
+#                             and event.content.parts
+#                             and event.content.parts[0].text
+#                         ):
+#                             response = "\n".join(
+#                                 [p.text for p in event.content.parts if p.text]
+#                             )
+#                         yield {
+#                             "is_task_complete": True,
+#                             "content": response,
+#                         }
+#                     else:
+#                         yield {
+#                             "is_task_complete": False,
+#                             "updates": "The host agent is thinking...",
+#                         }
+#                 except Exception as e:
+#                     print(f"Error processing event in stream: {e}")
+#                     traceback.print_exc()
+#                     continue
+                    
+#         except Exception as e:
+#             print(f"Error in stream method: {e}")
+#             traceback.print_exc()
+#             yield {
+#                 "is_task_complete": True,
+#                 "content": f"I apologize, but I encountered an error: {str(e)}. Please try again.",
+#             }
+
+    async def stream(self, query: Any, session_id: str) -> AsyncIterable[dict[str, Any]]:
         """
         Streams the agent's response to a given query.
         Enhanced to handle multimodal responses with better error handling.
         """
         try:
+            # ✅ Unwrap the text if it's a dict
+            if isinstance(query, dict):
+                query = query.get("text", "")
+            elif asyncio.iscoroutine(query):
+                query = await query
+
             session = await self._runner.session_service.get_session(
                 app_name=self._agent.name,
                 user_id=self._user_id,
                 session_id=session_id,
             )
-            content = types.Content(role="user", parts=[types.Part.from_text(text=query)])
-            
+
             if session is None:
                 session = await self._runner.session_service.create_session(
                     app_name=self._agent.name,
@@ -774,7 +847,12 @@ class HostAgent:
                     state={},
                     session_id=session_id,
                 )
-            
+
+            content = types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=query)]  # ✅ Now query is a string
+            )
+
             async for event in self._runner.run_async(
                 user_id=self._user_id, session_id=session.id, new_message=content
             ):
@@ -802,14 +880,15 @@ class HostAgent:
                     print(f"Error processing event in stream: {e}")
                     traceback.print_exc()
                     continue
-                    
+
         except Exception as e:
             print(f"Error in stream method: {e}")
             traceback.print_exc()
             yield {
                 "is_task_complete": True,
-                "content": f"I apologize, but I encountered an error: {str(e)}. Please try again.",
+                "content": f"I encountered an error: {str(e)}. Please try again.",
             }
+
 
     async def send_message(self, agent_name: str, task: str, tool_context: ToolContext):
         """Sends a task to a remote friend agent with better error handling."""
@@ -907,7 +986,8 @@ def _get_initialized_host_agent_sync():
             remote_agent_addresses=friend_agent_urls
         )
         print("✅ HostAgent initialized successfully!")
-        return host_instance.get_agent()
+        # return host_instance.get_agent()
+        return host_instance
 
     try:
         return asyncio.run(_async_main())

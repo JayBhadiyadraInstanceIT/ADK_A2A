@@ -22,8 +22,11 @@ const messagesDiv = document.getElementById("messages");
 let currentMessageId = null;
 
 // SSE handlers
-function connectSSE() {
+async function connectSSE() {
   // Connect to SSE endpoint
+  await fetch("http://" + window.location.host + "/start/" + sessionId, {
+    method: "POST",
+  });
   eventSource = new EventSource(sse_url + "?is_audio=" + is_audio);
 
   // Handle connection open
@@ -265,3 +268,27 @@ function arrayBufferToBase64(buffer) {
   }
   return window.btoa(binary);
 }
+
+// Add event listener to Stop Audio button
+const stopAudioButton = document.getElementById("stopAudioButton");
+stopAudioButton.addEventListener("click", () => {
+  // Use the same sessionId as your user_id.
+  const endAudioUrl = "http://" + window.location.host + "/end_audio/" + sessionId;
+  fetch(endAudioUrl, {
+    method: 'POST',
+  })
+    .then(response => response.json())
+    .then(data => {
+      console.log("End Audio Response:", data);
+      fetch("/stop_stt/" + sessionId, { method: "POST" });
+      // Optionally, display the transcript in the messages div
+      if (data.transcript) {
+        const transcriptP = document.createElement("p");
+        transcriptP.textContent = "> " + data.transcript;
+        messagesDiv.appendChild(transcriptP);
+      }
+    })
+    .catch(err => {
+      console.error("Error stopping audio:", err);
+    })
+});
