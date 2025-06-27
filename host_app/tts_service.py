@@ -3,7 +3,7 @@ from google.oauth2 import service_account
 from google.generativeai import GenerativeModel
 
 # Configure Gemini TTS model
-model = GenerativeModel(model_name="gemini-2.5-flash-preview")
+model = GenerativeModel(model_name="models/tts-1")
 
 def text_to_pcm(text: str) -> bytes:
     # Use Gemini 2.5 Flash Preview with audio response mode
