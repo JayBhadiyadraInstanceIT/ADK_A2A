@@ -1,23 +1,24 @@
 import base64
-import requests  # if you plan to call a REST API
+import requests
+from google.generativeai import GenerativeModel  # Assuming you have a GenerativeModel class defined
+
+model = GenerativeModel("models/tts-1")
 
 def generate_audio_from_text(text: str) -> bytes:
     """
     Converts a text string to audio PCM bytes using Gemini 2.5 Flash Preview TTS.
-    Replace the placeholder code below with your actual TTS API integration.
+    Returns raw audio bytes (PCM LINEAR16).
     """
     if not text:
         return b""
-    
-    # === Placeholder Implementation ===
-    # Example: You might send a POST request to the Gemini TTS API endpoint.
-    # response = requests.post("https://api.gemini.example/tts",
-    #                          json={"text": text, "voice": "YourPreferredVoice"})
-    # audio_pcm = response.content
-    #
-    # For now, we signal that the integration is not implemented:
-    raise NotImplementedError("Gemini 2.5 Flash Preview TTS integration not implemented")
-    
-    # === End Placeholder ===
-    # Return the raw audio PCM bytes
-    # return audio_pcm
+
+    try:
+        # Use synchronous generation (single-shot, not streaming)
+        response = model.generate_audio(text, stream=False)
+        if hasattr(response, "audio") and response.audio:
+            return response.audio
+        else:
+            raise RuntimeError("Gemini TTS response did not contain audio data.")
+    except Exception as e:
+        print(f"[TTS ERROR] Gemini TTS failed: {e}")
+        raise
