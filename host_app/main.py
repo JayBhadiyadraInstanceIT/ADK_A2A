@@ -989,12 +989,16 @@ async def debug_sessions():
 
 
 @app.post("/stt-stream")
-async def stt_stream(file: UploadFile = File(...)):
-    """Accepts a short PCM WAV file and returns transcribed text."""
+async def stt_stream(request: Request):
+    """Accepts raw audio stream and returns transcribed text."""
     try:
-        transcript = await transcribe_audio(file)
-        return {"text": transcript}
+        audio_bytes = await request.body()
+        print("Received audio file size:", len(audio_bytes))
+        transcript = await transcribe_audio(audio_bytes)
+        print(f"[STT TRANSCRIBED]: {transcript}")
+        return {"text": transcript or "No speech detected"}
     except Exception as e:
+        print(f"[STT ERROR]: {e}")
         return {"error": str(e)}
 
 

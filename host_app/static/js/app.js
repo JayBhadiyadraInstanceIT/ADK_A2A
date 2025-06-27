@@ -225,7 +225,7 @@ function audioRecorderHandler(pcmData) {
   
   // Start timer if not already running
   if (!bufferTimer) {
-    bufferTimer = setInterval(sendBufferedAudio, 200); // 0.2 seconds
+    bufferTimer = setInterval(sendBufferedAudio, 1000); // 0.2 seconds
   }
 }
 
@@ -235,31 +235,56 @@ function sendBufferedAudio() {
     return;
   }
   
-  // Calculate total length
-  let totalLength = 0;
-  for (const chunk of audioBuffer) {
-    totalLength += chunk.length;
-  }
-  
-  // Combine all chunks into a single buffer
-  const combinedBuffer = new Uint8Array(totalLength);
+  // Merge all Float32 PCM chunks
+  let float32 = new Float32Array(audioBuffer.reduce((sum, buf) => sum + buf.length, 0));
   let offset = 0;
-  for (const chunk of audioBuffer) {
-    combinedBuffer.set(chunk, offset);
+  for (let chunk of audioBuffer) {
+    float32.set(new Float32Array(chunk.buffer), offset);
     offset += chunk.length;
   }
-  
-  // Send the combined audio data
-  // sendMessage({
-  //   mime_type: "audio/pcm",
-  //   data: arrayBufferToBase64(combinedBuffer.buffer),
-  // });
-  sendToSTT(new Blob([combinedBuffer], { type: "audio/wav" }));
-  console.log("[CLIENT TO AGENT] sent %s bytes", combinedBuffer.byteLength);
-  
-  // Clear the buffer
+
+  // Convert Float32 to Int16 PCM (what WAV expects)
+  let int16 = new Int16Array(float32.length);
+  for (let i = 0; i < float32.length; i++) {
+    let s = Math.max(-1, Math.min(1, float32[i]));
+    int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+
+  // Create proper WAV blob from Int16
+  const wavBlob = createWavBlob(int16.buffer);
+  console.log("WAV Blob Preview", wavBlob.slice(0, 12).arrayBuffer().then(b => new Uint8Array(b)));
+  sendToSTT(wavBlob);
+
   audioBuffer = [];
 }
+  // Calculate total length
+//   let totalLength = 0;
+//   for (const chunk of audioBuffer) {
+//     totalLength += chunk.length;
+//   }
+  
+//   // Combine all chunks into a single buffer
+//   const combinedBuffer = new Uint8Array(totalLength);
+//   let offset = 0;
+//   for (const chunk of audioBuffer) {
+//     combinedBuffer.set(chunk, offset);
+//     offset += chunk.length;
+//   }
+  
+//   // Send the combined audio data
+//   // sendMessage({
+//   //   mime_type: "audio/pcm",
+//   //   data: arrayBufferToBase64(combinedBuffer.buffer),
+//   // });
+//   const wavBlob = createWavBlob(combinedBuffer.buffer);
+//   sendToSTT(wavBlob);
+
+//   // sendToSTT(new Blob([combinedBuffer], { type: "audio/wav" }));
+//   // console.log("[CLIENT TO AGENT] sent %s bytes", combinedBuffer.byteLength);
+  
+//   // Clear the buffer
+//   audioBuffer = [];
+// }
 
 // Stop audio recording and cleanup
 function stopAudioRecording() {
@@ -302,11 +327,55 @@ async function sendToSTT(blob) {
       console.log("[STT -> TEXT] ", text);
       sendMessage({
         mime_type: "text/plain",
-        data: text
-      });
+        data: text});
+      } else {
+      console.warn("[STT] No transcription returned.");
+      }
     }
-  } catch (error) {
+   catch (error) {
     console.error("STT request failed:", error);
   }
+}
+
+function createWavBlob(pcmBuffer, sampleRate = 16000) {
+  const float32Array = new Float32Array(pcmBuffer);
+  const int16Array = new Int16Array(float32Array.length);
+
+  // Convert Float32 [-1.0, 1.0] to Int16 [-32768, 32767]
+  for (let i = 0; i < float32Array.length; i++) {
+    let s = Math.max(-1, Math.min(1, float32Array[i]));
+    int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+
+  const byteLength = int16Array.length * 2;
+  const wavHeader = new ArrayBuffer(44);
+  const view = new DataView(wavHeader);
+
+  let offset = 0;
+  const writeString = (str) => {
+    for (let i = 0; i < str.length; i++) {
+      view.setUint8(offset++, str.charCodeAt(i));
+    }
+  };
+
+  writeString('RIFF');
+  view.setUint32(offset, 36 + byteLength, true); offset += 4;
+  writeString('WAVE');
+  writeString('fmt ');
+  view.setUint32(offset, 16, true); offset += 4;
+  view.setUint16(offset, 1, true); offset += 2; // PCM format
+  view.setUint16(offset, 1, true); offset += 2; // Mono
+  view.setUint32(offset, sampleRate, true); offset += 4;
+  view.setUint32(offset, sampleRate * 2, true); offset += 4; // Byte rate
+  view.setUint16(offset, 2, true); offset += 2; // Block align
+  view.setUint16(offset, 16, true); offset += 2; // Bits per sample
+  writeString('data');
+  view.setUint32(offset, byteLength, true); offset += 4;
+
+  const wavBytes = new Uint8Array(44 + byteLength);
+  wavBytes.set(new Uint8Array(wavHeader), 0);
+  wavBytes.set(new Uint8Array(int16Array.buffer), 44);
+
+  return new Blob([wavBytes], { type: 'audio/wav' });
 }
 
