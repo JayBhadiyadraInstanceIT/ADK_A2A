@@ -684,6 +684,7 @@
 
 import os
 import json
+import time
 import base64
 import warnings
 import asyncio
@@ -988,19 +989,38 @@ async def debug_sessions():
     }
 
 
+# @app.post("/stt-stream")
+# async def stt_stream(request: Request):
+#     """Accepts raw audio stream and returns transcribed text."""
+#     try:
+#         audio_bytes = await request.body()
+#         print("Received audio file size:", len(audio_bytes))
+#         transcript = await transcribe_audio(audio_bytes)
+#         print(f"[STT TRANSCRIBED]: {transcript}")
+#         return {"text": transcript or "No speech detected"}
+#     except Exception as e:
+#         print(f"[STT ERROR]: {e}")
+#         return {"error": str(e)}
+
+
 @app.post("/stt-stream")
-async def stt_stream(request: Request):
-    """Accepts raw audio stream and returns transcribed text."""
+# async def stt_stream(file: UploadFile = File(...), service: str = "google"):  # add service parameter if you have use in stt_service.py
+async def stt_stream(service: str = "google"):  # add service parameter if you have use in stt_service.py
     try:
-        audio_bytes = await request.body()
-        print("Received audio file size:", len(audio_bytes))
-        transcript = await transcribe_audio(audio_bytes)
+        # audio_bytes = await file.read()
+        # print("Received audio file size:", len(audio_bytes))
+
+        # with open(f"debug_audio_input_{int(time.time())}.wav", "wb") as f:
+        #     f.write(audio_bytes)
+
+        # transcript = await transcribe_audio(audio_bytes, service)  # Pass service parameter if needed
+        transcript = await transcribe_audio(service)  # Pass service parameter if needed
         print(f"[STT TRANSCRIBED]: {transcript}")
-        return {"text": transcript or "No speech detected"}
+        return {"text": transcript if transcript else ""}
+    
     except Exception as e:
         print(f"[STT ERROR]: {e}")
         return {"error": str(e)}
-
 
 @app.post("/tts-stream")
 async def tts_stream(request: Request):
@@ -1008,11 +1028,17 @@ async def tts_stream(request: Request):
     try:
         payload = await request.json()
         text = payload.get("text", "")
+        if not text.strip():
+            return {"error": "No text provided"}
+        
         audio_bytes = text_to_pcm(text)
+        with open(f"debug_audio_output_{int(time.time())}.wav", "wb") as f:
+            f.write(audio_bytes)
         return {
             "mime_type": "audio/pcm",
             "data": base64.b64encode(audio_bytes).decode("utf-8")
         }
+    
     except Exception as e:
         return {"error": str(e)}
 

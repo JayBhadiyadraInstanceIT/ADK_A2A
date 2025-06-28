@@ -225,7 +225,7 @@ function audioRecorderHandler(pcmData) {
   
   // Start timer if not already running
   if (!bufferTimer) {
-    bufferTimer = setInterval(sendBufferedAudio, 1000); // 0.2 seconds
+    bufferTimer = setInterval(sendBufferedAudio, 5000); // 0.2 seconds
   }
 }
 
@@ -314,6 +314,7 @@ function arrayBufferToBase64(buffer) {
 async function sendToSTT(blob) {
   const formData = new FormData();
   formData.append("file", blob, "audio.wav");
+  formData.append("service", "openai");
 
   try {
     const response = await fetch("/stt-stream", {
